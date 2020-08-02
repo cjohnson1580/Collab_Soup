@@ -1,10 +1,10 @@
-/*html{
+html{
   background-color: #bfbfbf;
-}*/
-
-.foot-text{
-  color: #e64100;
 }
+
+/* .foot-text{
+  color: #e64100;
+} */
 
 .parallax {
   /* The image used */
@@ -17,10 +17,6 @@
   background-repeat: no-repeat;
   background-size: cover;
 }
-
-/*.background {
-  background: transparent;
-}*/
 
 
 #createCon {
@@ -37,3 +33,9 @@
 #notFound{
   margin-top: 50px;
 }
+
+
+.fa-plus-circle {
+  font-size: 50px;
+}
+
