@@ -1,7 +1,18 @@
 
 var db = require("../models");
 
-module.exports = function (app) {
+module.exports = function (app, passport) {
+
+
+    // Validate if user is logged in
+    function isLoggedIn(req, res, next) {
+
+        if (req.isAuthenticated()) return next();
+
+        // If not authenticated, then redirect to the signin page
+        res.redirect("/creation");
+    }
+
 
     // Get all Users
     app.post("/api/userByEmail", function (req, res) {
@@ -12,21 +23,22 @@ module.exports = function (app) {
     });
     // End of get by Email
 
-    app.get("/api/userById/:id", function (req, res) {
-        var userId = req.params.id;
+
+    // We get the ID from the Session
+    // Only a logged in User may update the user
+    app.get("/api/userById/", isLoggedIn, function (req, res) {
+        var userId = req.user.id;
 
         // var userEmail = null;
 
-
-
         db.User.findAll({ where: { id: userId } }).then(function (dbUser) {
+
             res.json(dbUser);
         });
     })
 
 
     app.post("/api/user", function (req, res) {
-
 
 
         var newUser = req.body;
@@ -52,27 +64,30 @@ module.exports = function (app) {
 
 
     app.post("/api/project", function (req, res) {
-        var id = req.user.id
-        console.log(id)
+
+        var loggedUserId = req.user.id
+
 
         var newProject = {
             project_name: req.body.projectName,
             project_description: req.body.projDesc
         }
-        console.log(newProject)
 
         db.Project.create(newProject).then(function (dbProject) {
+
             var projId = dbProject.id
 
             var userProj = {
-                UserId: id,
-                ProjectId: projId
+                UserId: loggedUserId,
+                ProjectId: projId,
+                project_owner: 1 // Created the project
             }
 
-            db.User_project.create(userProj).then(function () {});
+            db.User_project.create(userProj).then(function (dbUserProj) { });
 
             var languageProperties = [];
             var propertyNames = Object.getOwnPropertyNames(req.body);
+
 
             for (var i = 0; i < propertyNames.length; i++) {
 
@@ -87,19 +102,18 @@ module.exports = function (app) {
 
                 for (var i = 0; i < languageProperties.length; i++) {
                     var lang = languageProperties[i];
-                   
+
                     var userLang = {
-                        ProjectId: dbProject.ProjectId,
+                        ProjectId: projId,
                         language_name: req.body[lang]
                     }
 
-                    
                     db.Project_language.create(userLang).then(function (userLanguage, created) {
                         if (!userLanguage) {
                             return done(null, false);
                         }
                     });
-                    
+
                 }
 
             }
@@ -129,11 +143,68 @@ module.exports = function (app) {
 
 
     // get all projects by User
-    app.get("/api/userProject/:id", function (req, res) {
-        var userId = req.params.id;
+    app.get("/api/userProject/", function (req, res) {
+        
+        var sessionUserId = req.user.id;
 
-        db.User_project.findAll({ where: { user_id: userId } }).then(function (dbUserProject) {
-            res.json(dbUserProject);
+        db.User_project.findAll({ 
+            where: { UserId: sessionUserId },
+            include: [{
+                model: db.Project
+            }]
+                
+        })
+        .then(function (dbUserProject) {
+        
+            //var projectObjects = {}
+
+            console.log("In then of API GET user project");
+            // db.Project_language.findAl({where: {id: }})
+
+            for(var i = 0; i < dbUserProject.length; i++){
+                console.log("In for loop")
+                
+                var projectObject = {}
+                
+                var newObj = dbUserProject[i].dataValues;
+                // console.log(newObj);
+
+                projectObject["ProjectOwner"] = newObj.project_owner;
+                projectObject["UserId"] = newObj.UserId;
+
+                var currentProjectId = newObj.ProjectId
+                projectObject["ProjectId"] = currentProjectId;
+                projectObject["ProjectName"] = newObj.Project.dataValues.project_name;
+
+                var projectLanguages = [];
+
+                db.Project_language.findAll({ where : {ProjectId: currentProjectId}})
+                .then(function(prjLang){
+                    console.log("In Project Languages");
+                    // console.log(prjLang);
+                    // create a for loop and push projectLanguages
+                    for(var i = 0; i < prjLang.length; i++){
+                        console.log("In for loop for languages")
+                        var newLang = prjLang[i].dataValues;
+                        console.log(newLang);
+                        var lang = newLang.language_name;
+                        console.log(lang);
+
+                        projectLanguages.push(lang)
+                    }
+
+                    console.log(projectLanguages);
+                
+                    projectObject["ProjectLanguages"] = projectLanguages
+
+                    console.log("Project Object")
+                    console.log(projectObject);
+                });
+                
+            }
+            // End of For Loop on dbUserProject
+            
+            // res.json(dbUserProject);
         });
     });
 
@@ -167,23 +238,66 @@ module.exports = function (app) {
     });
 
 
-    app.get("/api/project/:id", function (req, res) {
-        var projectId = req.params.id;
-        db.Project.findAll({ where: { id: projectId } }).then(function (dbProject) {
-            res.json(dbProject);
+    app.post("/api/users/", function (req, res) {
+        
+    
+        db.User.findAll({ where: { id: req.body.id } }).then(function (dbUsers) {
+            res.json(dbUsers[0].dataValues.firstname);
         });
     });
+
 
     app.get("/api/projectAll", function (req, res) {
         db.Project.findAll({
             include: [{
                 model: db.Project_language
+            }, {
+                model: db.User_project
             }]
         }).then(function (dbProject) {
             res.json(dbProject);
-
-            console.log(dbProject)
         });
-    })
+    });
+
+
+    // We get the ID from the Session
+    // Only a logged in User may update the user
+    app.put("/api/userUpdate/", function (req, res) {
+
+        // console.log(req);
+        var userId = req.user.id;
+        var reqObj = req.body;
+        var propertyNames = Object.getOwnPropertyNames(reqObj)
+        var columnToUpdate = propertyNames[0];
+        var valueOfCol = reqObj[columnToUpdate];
+
+        var updateStatement = {};
+        updateStatement[columnToUpdate] = valueOfCol
+
+
+        db.User.update(
+            updateStatement,
+            { where: { id: userId } }
+        )
+            .then(function (dbUser) {
+                res.json(dbUser);
+            })
+
+    });
+
+    app.post("/api/joinProject", function (req, res) {
+
+        var newObj = req.body
+
+        var useraddedId = req.user.id;
+
+        newObj.UserId = useraddedId;
+
+   
+
+        db.User_project.create(newObj).then(function (dbProjId) {
+         
+        });
+    });
 }
 
